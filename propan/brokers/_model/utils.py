@@ -93,6 +93,7 @@ def suppress_decor(
             try:
                 return await func(message)
             except Exception as e:
+                print(e)
                 if reraise_exc is True:
                     raise e
                 return None

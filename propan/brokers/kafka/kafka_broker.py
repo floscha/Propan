@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from functools import partial, wraps
+from itertools import chain
 from types import TracebackType
 from typing import (
     Any,
@@ -139,6 +140,7 @@ class KafkaBroker(
         self,
         *topics: str,
         group_id: Optional[str] = None,
+        max_records: int = 1,
         key_deserializer: Optional[Callable[[bytes], Any]] = None,
         value_deserializer: Optional[Callable[[bytes], Any]] = None,
         fetch_max_wait_ms: int = 500,
@@ -193,6 +195,7 @@ class KafkaBroker(
                 topics=topics,
                 _description=description,
                 group_id=group_id,
+                max_records=max_records,
                 consumer_kwargs={
                     "key_deserializer": key_deserializer,
                     "value_deserializer": value_deserializer,
@@ -251,16 +254,31 @@ class KafkaBroker(
             handler.task = asyncio.create_task(self._consume(handler))
 
     @staticmethod
-    async def _parse_message(message: ConsumerRecord) -> KafkaMessage:
-        headers = {i: j.decode() for i, j in message.headers}
-        return PropanMessage(
-            body=message.value,
-            raw_message=message,
-            message_id=f"{message.offset}-{message.timestamp}",
-            reply_to=headers.get("reply_to", ""),
-            content_type=headers.get("content-type"),
-            headers=headers,
-        )
+    async def _parse_message(message: Union[ConsumerRecord, Tuple[ConsumerRecord, ...]]) -> Union[KafkaMessage, List[KafkaMessage]]:
+        if isinstance(message, tuple):
+            messages = []
+            for m in message:
+                headers = {i: j.decode() for i, j in m.headers}
+                messages.append(PropanMessage(
+                    body=m.value,
+                    raw_message=m,
+                    message_id=f"{m.offset}-{m.timestamp}",
+                    reply_to=headers.get("reply_to", ""),
+                    content_type=headers.get("content-type"),
+                    headers=headers,
+                ))
+            return messages
+
+        else:
+            headers = {i: j.decode() for i, j in message.headers}
+            return PropanMessage(
+                body=message.value,
+                raw_message=message,
+                message_id=f"{message.offset}-{message.timestamp}",
+                reply_to=headers.get("reply_to", ""),
+                content_type=headers.get("content-type"),
+                headers=headers,
+            )
 
     def _process_message(
         self,
@@ -409,7 +427,13 @@ class KafkaBroker(
         connected = True
         while True:
             try:
-                msg = await handler.consumer.getone()
+                if handler.max_records > 1:
+                    msg = tuple(chain(*(await handler.consumer.getmany(
+                        max_records=handler.max_records,
+                        timeout_ms=handler.consumer_kwargs.get("fetch_max_wait_ms", 500),
+                    )).values()))
+                else:
+                    msg = await handler.consumer.getone()
 
             except Exception as e:
                 if connected is True:

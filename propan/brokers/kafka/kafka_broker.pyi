@@ -168,6 +168,7 @@ class KafkaBroker(
         self,
         *topics: str,
         group_id: Optional[str] = None,
+        max_records: int = 1,
         key_deserializer: Optional[Callable[[bytes], Any]] = None,
         value_deserializer: Optional[Callable[[bytes], Any]] = None,
         fetch_max_wait_ms: int = 500,

@@ -25,6 +25,7 @@ class Handler(BaseHandler):
     consumer: Optional[AIOKafkaConsumer] = None
     task: Optional["asyncio.Task[Any]"] = None
     consumer_kwargs: AnyDict = field(default_factory=dict)
+    max_records: int = 1
 
     def __init__(
         self,
@@ -35,6 +36,7 @@ class Handler(BaseHandler):
         consumer: Optional[AIOKafkaConsumer] = None,
         task: Optional["asyncio.Task[Any]"] = None,
         consumer_kwargs: Optional[AnyDict] = None,
+        max_records: int = 1,
         _description: str = "",
     ):
         self.callback = callback
@@ -45,6 +47,7 @@ class Handler(BaseHandler):
         self.group_id = group_id
         self.consumer = consumer
         self.consumer_kwargs = consumer_kwargs or {}
+        self.max_records = max_records
 
     def get_schema(self) -> Dict[str, AsyncAPIChannel]:
         message_title, body, reply_to = self.get_message_object()
